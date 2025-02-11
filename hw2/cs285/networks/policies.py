@@ -55,6 +55,7 @@ class MLPPolicy(nn.Module):
 
         self.discrete = discrete
 
+
     @torch.no_grad()
     def get_action(self, obs: np.ndarray) -> np.ndarray:
         """Takes a single observation (as a numpy array) and returns a single action (as a numpy array)."""
@@ -77,12 +78,15 @@ class MLPPolicy(nn.Module):
             # TODO: define the forward pass for a policy with a discrete action space.
             # pass
             logits = self.logits_net(obs)
+            # print(f"logits is {logits}")
+            # print(f"now the actions is discrete")
             return distributions.Categorical(logits=logits)
         else:
             # TODO: define the forward pass for a policy with a continuous action space.
             # pass
             mean = self.mean_net(obs)
             std = torch.exp(self.logstd)
+            # print(f"now the actions is continuous")
             return distributions.Normal(mean, std)
         # return None
 
@@ -105,6 +109,12 @@ class MLPPolicyPG(MLPPolicy):
         actions = ptu.from_numpy(actions)
         advantages = ptu.from_numpy(advantages)
 
+        # 对于离散动作：如果 actions 是 one-hot 编码，则转换为整数索引
+        if self.discrete and actions.ndim > 1:
+            actions = torch.argmax(actions, dim=1)
+    
+        # print(f"the values of actions is {actions}")
+
         # TODO: implement the policy gradient actor update.
         # loss = None
         # 获取动作分布
@@ -112,6 +122,17 @@ class MLPPolicyPG(MLPPolicy):
         
         # 计算对数概率
         log_probs = distribution.log_prob(actions)
+        # print(f"the values of log_probs is {log_probs}")
+        # print(f"the shape of log_probs is {log_probs.shape}")
+        # print(f"the shape of advantages is {advantages.shape}")
+
+        # 对于连续动作，由于 log_prob 返回 [batch_size, ac_dim]，需要对动作维度求和
+        if not self.discrete:
+            log_probs = log_probs.sum(dim=1)
+        
+        # print(f"the shape of log_probs is {log_probs.shape}")
+        # print(f"the shape of advantages is {advantages.shape}")
+        # print(f"the values of actions is {actions}")
         
         # 计算策略梯度损失：-E[log π(a|s) * A(s,a)]
         loss = -(log_probs * advantages).mean()
