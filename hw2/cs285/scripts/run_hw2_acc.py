@@ -1,8 +1,8 @@
 import os
 import time
 
-from cs285.agents.pg_agent import PGAgent
-# from cs285.agents.pg_agent_acc import PGAgent
+# from cs285.agents.pg_agent import PGAgent
+from cs285.agents.pg_agent_acc import PGAgent
 
 import os
 import time
@@ -12,14 +12,35 @@ import numpy as np
 import torch
 from cs285.infrastructure import pytorch_util as ptu
 
-from cs285.infrastructure import utils
-# from cs285.infrastructure import utils_acc
+# from cs285.infrastructure import utils
+from cs285.infrastructure import utils_acc
 from cs285.infrastructure.logger import Logger
 from cs285.infrastructure.action_noise_wrapper import ActionNoiseWrapper
-# from gym.vector import AsyncVectorEnv
+from gym.vector import AsyncVectorEnv
 
 
 MAX_NVIDEO = 2
+
+def process_vectorized_trajectories(trajs):
+    # 初始化字典来存储所有轨迹数据
+    processed_dict = {
+        "observation": [],
+        "action": [],
+        "reward": [],
+        "terminal": []
+    }
+    
+    print("开始处理轨迹数据...")
+    # print(f"轨迹数量：{len(trajs)}")
+    # 处理每个轨迹
+    for traj in trajs:
+        # 确保数据维度正确
+        processed_dict["observation"].append(np.array(traj["observation"]))
+        processed_dict["action"].append(np.array(traj["action"]))
+        processed_dict["reward"].append(np.array(traj["reward"]))
+        processed_dict["terminal"].append(np.array(traj["terminal"]))
+    
+    return processed_dict
 
 
 def run_training_loop(args):
@@ -31,24 +52,26 @@ def run_training_loop(args):
     ptu.init_gpu(use_gpu=not args.no_gpu, gpu_id=args.which_gpu)
 
     # make the gym environment
-    env = gym.make(args.env_name, render_mode=None)
+    # env = gym.make(args.env_name, render_mode=None)
     # def make_env():
-    #     # return gym.make(args.env_name, render_mode=None)
+    #     return gym.make(args.env_name, render_mode=None)
     #     # return gym.make(args.env_name)
     #     env = gym.make(args.env_name)
     #     env.reset(seed=args.seed)
     #     return env
 
-    # num_envs = 1  # 根据CPU核心数调整
+    num_envs = 8  # 根据CPU核心数调整
     # env = AsyncVectorEnv([make_env for _ in range(num_envs)])
     # print(f"成功创建向量化环境，并行环境数量：{num_envs}")
     # envs = gym.vector.AsyncVectorEnv([
-    #     lambda: gym.make("Humanoid-v4"),
-    #     lambda: gym.make("Humanoid-v4"),
-    #     lambda: gym.make("Humanoid-v4")
+    #     lambda: gym.make("Humanoid-v4", new_step_api=True),
+    #     lambda: gym.make("Humanoid-v4", new_step_api=True),
+    #     lambda: gym.make("Humanoid-v4", new_step_api=True)
     # ])
+    # env_fns = [lambda: gym.make("Humanoid-v4")] * num_envs
+    # env = gym.vector.AsyncVectorEnv(env_fns, shared_memory=True)
+    env = gym.vector.make('Humanoid-v4', num_envs=num_envs)
     # envs.reset()
-    # env = gym.vector.make('Humanoid-v4', num_envs=8)
     discrete = isinstance(env.action_space, gym.spaces.Discrete)
 
     # add action noise, if needed
@@ -58,14 +81,21 @@ def run_training_loop(args):
 
     max_ep_len = args.ep_len or env.spec.max_episode_steps
 
-    ob_dim = env.observation_space.shape[0]
-    ac_dim = env.action_space.n if discrete else env.action_space.shape[0]
+    # ob_dim = env.observation_space.shape[0]
+    # ac_dim = env.action_space.n if discrete else env.action_space.shape[0]
+    # 获取单个环境的观察空间和动作空间维度
+    ob_dim = env.single_observation_space.shape[0] 
+    ac_dim = env.single_action_space.n if discrete else env.single_action_space.shape[0]
+
+    # print(f"Observation dimension: {ob_dim}")
+    # print(f"Action dimension: {ac_dim}")
 
     # simulation timestep, will be used for video saving
     if hasattr(env, "model"):
         fps = 1 / env.model.opt.timestep
     else:
-        fps = env.env.metadata["render_fps"]
+        # fps = env.env.metadata["render_fps"]
+        fps = env.get_attr("metadata")[0]["render_fps"]
 
     # initialize agent
     agent = PGAgent(
@@ -92,13 +122,17 @@ def run_training_loop(args):
         # TODO: sample `args.batch_size` transitions using utils.sample_trajectories
         # make sure to use `max_ep_len`
         # trajs, envsteps_this_batch = None, None  # TODO
-        trajs, envsteps_this_batch = utils.sample_trajectories(env, agent.actor, args.batch_size, max_ep_len)
-        # trajs, envsteps_this_batch = utils_acc.sample_trajectories(env, agent.actor, args.batch_size, max_ep_len)
+        # trajs, envsteps_this_batch = utils.sample_trajectories(env, agent.actor, args.batch_size, max_ep_len)
+        trajs, envsteps_this_batch = utils_acc.sample_trajectories(env, agent.actor, args.batch_size, max_ep_len)
         total_envsteps += envsteps_this_batch
 
         # trajs should be a list of dictionaries of NumPy arrays, where each dictionary corresponds to a trajectory.
         # this line converts this into a single dictionary of lists of NumPy arrays.
         trajs_dict = {k: [traj[k] for traj in trajs] for k in trajs[0]}
+        # print(f"trajs label: {trajs[0]}")``
+        # print(f"trajs action shape: {trajs[0]['action'].shape}")
+        # print(f"trajs reward shape: {trajs[0]['reward'].shape}")
+        # trajs_dict = process_vectorized_trajectories(trajs)
 
         # TODO: train the agent using the sampled trajectories and the agent's update function
         # train_info: dict = None
@@ -113,15 +147,15 @@ def run_training_loop(args):
         if itr % args.scalar_log_freq == 0:
             # save eval metrics
             print("\nCollecting data for eval...")
-            eval_trajs, eval_envsteps_this_batch = utils.sample_trajectories(
-                env, agent.actor, args.eval_batch_size, max_ep_len
-            )
-            # eval_trajs, eval_envsteps_this_batch = utils_acc.sample_trajectories(
+            # eval_trajs, eval_envsteps_this_batch = utils.sample_trajectories(
             #     env, agent.actor, args.eval_batch_size, max_ep_len
             # )
+            eval_trajs, eval_envsteps_this_batch = utils_acc.sample_trajectories(
+                env, agent.actor, args.eval_batch_size, max_ep_len
+            )
 
-            logs = utils.compute_metrics(trajs, eval_trajs)
-            # logs = utils_acc.compute_metrics(trajs, eval_trajs)
+            # logs = utils.compute_metrics(trajs, eval_trajs)
+            logs = utils_acc.compute_metrics(trajs, eval_trajs)
             # compute additional metrics
             logs.update(train_info)
             logs["Train_EnvstepsSoFar"] = total_envsteps
@@ -141,12 +175,12 @@ def run_training_loop(args):
 
         if args.video_log_freq != -1 and itr % args.video_log_freq == 0:
             print("\nCollecting video rollouts...")
-            eval_video_trajs = utils.sample_n_trajectories(
-                env, agent.actor, MAX_NVIDEO, max_ep_len, render=True
-            )
-            # eval_video_trajs = utils_acc.sample_n_trajectories(
+            # eval_video_trajs = utils.sample_n_trajectories(
             #     env, agent.actor, MAX_NVIDEO, max_ep_len, render=True
             # )
+            eval_video_trajs = utils_acc.sample_n_trajectories(
+                env, agent.actor, MAX_NVIDEO, max_ep_len, render=True
+            )
 
             logger.log_trajs_as_videos(
                 eval_video_trajs,
