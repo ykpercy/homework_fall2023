@@ -17,8 +17,10 @@ def load_experiment_data(data_dir, experiment_name):
         event_acc = EventAccumulator(event_files)
         event_acc.Reload()
         
-        steps = [s.value for s in event_acc.Scalars('Train_EnvstepsSoFar')][:300]
-        returns = [s.value for s in event_acc.Scalars('Eval_AverageReturn')][:300]
+        # steps = [s.value for s in event_acc.Scalars('Train_EnvstepsSoFar')][:300]
+        # returns = [s.value for s in event_acc.Scalars('Eval_AverageReturn')][:300]
+        steps = [s.value for s in event_acc.Scalars('Train_EnvstepsSoFar')]
+        returns = [s.value for s in event_acc.Scalars('Eval_AverageReturn')]
         
         if steps and returns:
             print(f"Successfully loaded data: iterations: {len(steps)}, steps: {steps[-1]}")
@@ -61,7 +63,7 @@ def plot_learning_curve(data, output_path):
 
 def main():
     # experiment_name = "q2_pg_humanoid_Humanoid-v4_2025-02-18_09-54-03"
-    experiment_name = "q2_pg_humanoid_acc_Humanoid-v4_2025-02-21_05-20-55"
+    experiment_name = "q2_pg_humanoid_acc_Humanoid-v4_2025-03-03_03-47-45"
     
     data_dir = "./data"
     output_dir = "analysis_results"
@@ -74,7 +76,7 @@ def main():
         print("Error: No valid experiment data found")
         return
     
-    output_path = os.path.join(output_dir, "humanoid_learning_curve.png")
+    output_path = os.path.join(output_dir, "humanoid_learning_curve_e1000.png")
     plot_learning_curve(data, output_path)
     
     print(f"\nPlot saved to: {output_path}")

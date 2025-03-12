@@ -100,7 +100,7 @@ def sample_trajectories(
         
         # 初始化向量化环境
         obs = env.reset()
-        print(f"the shape of obs: {obs.shape}")
+        # print(f"the shape of obs: {obs.shape}")
         num_envs = env.num_envs
         
         # 为每个环境维护独立的轨迹数据

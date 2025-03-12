@@ -71,19 +71,22 @@ class PGAgent(nn.Module):
         Each input is a list of NumPy arrays, where each array corresponds to a single trajectory. The batch size is the
         total number of samples across all trajectories (i.e. the sum of the lengths of all the arrays).
         """
-
+        # print(f"the shape of rewards is {rewards[0].shape}")
         # step 1: calculate Q values of each (s_t, a_t) point, using rewards (r_0, ..., r_t, ..., r_T)
         q_values: Sequence[np.ndarray] = self._calculate_q_vals(rewards)
 
         # TODO: flatten the lists of arrays into single arrays, so that the rest of the code can be written in a vectorized
         # way. obs, actions, rewards, terminals, and q_values should all be arrays with a leading dimension of `batch_size`
         # beyond this point.
-        
+
         obs = np.concatenate(obs)
         actions = np.concatenate(actions)
         rewards = np.concatenate(rewards)
         terminals = np.concatenate(terminals)
         q_values = np.concatenate(q_values)
+
+        # print(f"the shape of obs is {obs.shape}")
+        # print(f"the shape of rewards is {rewards.shape}")
 
         # step 2: calculate advantages from Q values
         advantages: np.ndarray = self._estimate_advantage(
@@ -281,7 +284,11 @@ class PGAgent(nn.Module):
         # # 确保rewards是二维数组，其中每个元素代表一个轨迹
         # if len(rewards.shape) == 1:
         #     rewards = [rewards]
-
+        # print(f"the shape of rewards is {rewards[0].shape}")
+        # print(f"the 0 dimen of rewards is {len(rewards[0])}")
+        # print(f"the 1 dimen of rewards is {len(rewards[1])}")
+        # print(f"the 2 dimen of rewards is {len(rewards[2])}")
+        # print(f"the length of rewards is {len(rewards)}")
         if not self.use_reward_to_go:
             # 向量化计算折扣回报
             q_values = [torch.tensor([(self.gamma ** torch.arange(len(r))).dot(r)]) for r in rewards]
@@ -298,6 +305,37 @@ class PGAgent(nn.Module):
                 q_values.append(disc_rewards)
         
         return q_values
+
+    # def _calculate_q_vals(self, rewards):
+    #     # 首先确保rewards是正确的格式
+    #     # if isinstance(rewards, torch.Tensor):
+    #     #     rewards = ptu.to_numpy(rewards)
+
+    #     # # 确保rewards是二维数组，其中每个元素代表一个轨迹
+    #     # if len(rewards.shape) == 1:
+    #     #     rewards = [rewards]
+    #     # print(f"the shape of rewards is {rewards[0].shape}")
+    #     # print(f"the 0 dimen of rewards is {len(rewards[0])}")
+    #     # print(f"the 1 dimen of rewards is {len(rewards[1])}")
+    #     # print(f"the 2 dimen of rewards is {len(rewards[2])}")
+    #     # print(f"the length of rewards is {len(rewards)}")
+    #     if not self.use_reward_to_go:
+    #         # 向量化计算折扣回报
+    #         q_values = [torch.tensor([(self.gamma ** torch.arange(len(r))).dot(r)]) for r in rewards]
+    #     else:
+    #         # 向量化计算即时奖励
+    #         q_values = [self._discounted_reward_to_go(r) for r in rewards]
+    #         # q_values = []
+    #         # for r in rewards:
+    #         #     T = len(r)
+    #         #     disc_rewards = torch.zeros(T)
+    #         #     running_sum = 0
+    #         #     for t in reversed(range(T)):
+    #         #         running_sum = r[t] + self.gamma * running_sum
+    #         #         disc_rewards[t] = running_sum
+    #         #     q_values.append(disc_rewards)
+        
+    #     return q_values
 
     # def _estimate_advantage(
     #     self,
@@ -361,11 +399,13 @@ class PGAgent(nn.Module):
             advantages = q_values
         else:
             values = ptu.to_numpy(self.critic(ptu.from_numpy(obs)).squeeze())
+            # print(f"the shape of values is {values.shape}")
             
             if self.gae_lambda is None:
                 advantages = q_values - values
             else:
                 # 向量化 GAE 计算
+                # print(f"the shape of rewards is {rewards.shape}")
                 values_next = np.append(values[1:], [0])
                 deltas = rewards + self.gamma * values_next * (1 - terminals) - values
                 
@@ -379,6 +419,54 @@ class PGAgent(nn.Module):
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
         return advantages
+
+    # def _estimate_advantage(self, obs, rewards, q_values, terminals):
+    #     if self.critic is None:
+    #         advantages = q_values
+    #     else:
+    #         values = ptu.to_numpy(self.critic(ptu.from_numpy(obs)).squeeze())
+            
+    #         if self.gae_lambda is None:
+    #             advantages = q_values - values
+    #         else:
+    #             # Convert arrays to PyTorch tensors
+    #             rewards_tensor = torch.tensor(rewards, dtype=torch.float32)
+    #             values_tensor = torch.tensor(values, dtype=torch.float32)
+    #             terminals_tensor = torch.tensor(terminals, dtype=torch.float32)
+                
+    #             # Compute next state values (shifted values with 0 appended)
+    #             values_next_tensor = torch.cat([values_tensor[1:], torch.tensor([0.0])])
+                
+    #             # Calculate temporal difference errors
+    #             deltas = rewards_tensor + self.gamma * values_next_tensor * (1 - terminals_tensor) - values_tensor
+                
+    #             # # Create discount factors for each timestep
+    #             discount_factors = torch.cumprod(
+    #                 torch.cat([
+    #                     torch.tensor([1.0]), 
+    #                     torch.tensor([self.gamma * self.gae_lambda] * (len(deltas) - 1))
+    #                 ]) * (1 - terminals_tensor), 
+    #                 dim=0
+    #             )
+                
+    #             # Efficient GAE calculation using reverse cumulative sum
+    #             advantages = torch.zeros_like(deltas)
+    #             for t in range(len(deltas)):
+    #                 advantages[t] = torch.sum(discount_factors[:len(deltas)-t] * deltas[t:])
+                
+    #             # Alternative vectorized implementation using reversed tensors and cumsum
+    #             # reverse_deltas = torch.flip(deltas, [0])
+    #             # reverse_terminals = torch.flip(terminals_tensor, [0])
+    #             # reverse_discount = torch.cumprod(torch.tensor([1.0] + [self.gamma * self.gae_lambda] * (len(deltas)-1)) * (1 - reverse_terminals), dim=0)
+    #             # reverse_advantages = torch.cumsum(reverse_deltas * reverse_discount, dim=0) / reverse_discount
+    #             # advantages = torch.flip(reverse_advantages, [0])
+                
+    #             advantages = advantages.numpy()
+        
+    #     if self.normalize_advantages:
+    #         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        
+    #     return advantages
 
     # def _estimate_advantage(
     #     self, 
@@ -464,35 +552,62 @@ class PGAgent(nn.Module):
         return torch.full((T,), discounted_return).numpy()
 
 
-    def _discounted_reward_to_go(self, rewards: np.ndarray) -> np.ndarray:
+    # def _discounted_reward_to_go(self, rewards: np.ndarray) -> np.ndarray:
+    #     """
+    #     Helper function which takes a list of rewards {r_0, r_1, ..., r_t', ... r_T} and returns a list where the entry
+    #     in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}.
+    #     """
+    #     """Optimized reward-to-go calculation using torch.cumsum"""
+    #     # return None
+    #     # T = len(rewards)
+    #     # discounted_rewards = np.zeros(T)
+        
+    #     # running_sum = 0
+    #     # for t in reversed(range(T)):
+    #     #     running_sum = rewards[t] + self.gamma * running_sum
+    #     #     discounted_rewards[t] = running_sum
+            
+    #     # return discounted_rewards
+    #     print(f"rewards: {rewards}")
+    #     print(f"the dtype of rewards: {type(rewards)}, the shape of rewards: {rewards.shape}")
+    #     rewards_tensor = torch.from_numpy(rewards)
+    #     T = len(rewards_tensor)
+        
+    #     # Create powers of gamma for each timestep
+    #     gammas = torch.pow(self.gamma, torch.arange(T, device=rewards_tensor.device))
+        
+    #     # Flip rewards and calculate cumulative sum
+    #     rewards_reversed = torch.flip(rewards_tensor, [0])
+    #     cumsum_rewards = torch.cumsum(rewards_reversed, dim=0)
+        
+    #     # Apply discount factors and flip back
+    #     discounted_rewards = torch.flip(cumsum_rewards * gammas, [0])
+        
+    #     return discounted_rewards.numpy()
+
+    def _discounted_reward_to_go(self, rewards: Sequence[float]) -> Sequence[float]:
         """
         Helper function which takes a list of rewards {r_0, r_1, ..., r_t', ... r_T} and returns a list where the entry
         in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}.
         """
-        """Optimized reward-to-go calculation using torch.cumsum"""
-        # return None
-        # T = len(rewards)
-        # discounted_rewards = np.zeros(T)
+        rewards_tensor = torch.tensor(rewards, dtype=torch.float32)
+        T = len(rewards)
         
-        # running_sum = 0
-        # for t in reversed(range(T)):
-        #     running_sum = rewards[t] + self.gamma * running_sum
-        #     discounted_rewards[t] = running_sum
-            
-        # return discounted_rewards
-        print(f"rewards: {rewards}")
-        print(f"the dtype of rewards: {type(rewards)}, the shape of rewards: {rewards.shape}")
-        rewards_tensor = torch.from_numpy(rewards)
-        T = len(rewards_tensor)
+        # 创建递减的折扣因子序列
+        discount_multipliers = torch.tensor([self.gamma ** i for i in range(T)], dtype=torch.float32)
         
-        # Create powers of gamma for each timestep
-        gammas = torch.pow(self.gamma, torch.arange(T, device=rewards_tensor.device))
+        # 将奖励序列反转
+        reversed_rewards = rewards_tensor.flip(0)
         
-        # Flip rewards and calculate cumulative sum
-        rewards_reversed = torch.flip(rewards_tensor, [0])
-        cumsum_rewards = torch.cumsum(rewards_reversed, dim=0)
+        # 应用折扣因子，实现元素级乘法
+        weighted_rewards = reversed_rewards * discount_multipliers
         
-        # Apply discount factors and flip back
-        discounted_rewards = torch.flip(cumsum_rewards * gammas, [0])
+        # 使用 cumsum 计算累积和
+        weighted_cumsum = torch.cumsum(weighted_rewards, dim=0)
         
-        return discounted_rewards.numpy()
+        # 使用适当的折扣因子进行规范化
+        normalizers = discount_multipliers.reciprocal()
+        normalized_cumsum = weighted_cumsum * normalizers
+        
+        # 将结果翻转回原始顺序
+        return normalized_cumsum.flip(0)
