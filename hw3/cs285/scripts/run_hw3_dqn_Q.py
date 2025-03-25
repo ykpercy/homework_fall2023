@@ -71,6 +71,14 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         raise ValueError(
             f"Unsupported observation space shape: {env.observation_space.shape}"
         )
+    
+    # Create lists to store metrics for later analysis
+    steps_list = []
+    q_values_list = []
+    critic_loss_list = []
+    target_values_list = []
+    train_returns_list = []
+    eval_returns_list = []
 
     def reset_env_training():
         nonlocal observation
@@ -170,6 +178,14 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                 batch['dones'],
                 step
             )
+
+            # Store metrics for analysis
+            if 'q_values' in update_info:
+                q_values_list.append((step, update_info['q_values']))
+            if 'critic_loss' in update_info:
+                critic_loss_list.append((step, update_info['critic_loss']))
+            if 'target_values' in update_info:
+                target_values_list.append((step, update_info['target_values']))
 
             # Logging code
             update_info["epsilon"] = epsilon

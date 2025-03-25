@@ -131,3 +131,6 @@ dmypy.json
 
 hw2/data/
 hw2/analysis_results/
+
+hw3/data/
+hw3/tensorboard_plots/
