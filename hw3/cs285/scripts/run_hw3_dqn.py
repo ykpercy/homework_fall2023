@@ -1,7 +1,8 @@
 import time
 import argparse
 
-from cs285.agents.dqn_agent import DQNAgent
+# from cs285.agents.dqn_agent import DQNAgent
+from cs285.agents.dqn_agent_explore import DQNAgent
 import cs285.env_configs
 
 import os
