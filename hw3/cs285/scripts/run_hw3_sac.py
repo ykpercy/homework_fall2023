@@ -68,7 +68,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             action = env.action_space.sample()
         else:
             # TODO(student): Select an action
-            action = ...
+            action = agent.get_action(observation)
 
         # Step the environment and add the data to the replay buffer
         next_observation, reward, done, info = env.step(action)
@@ -90,8 +90,15 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         # Train the agent
         if step >= config["training_starts"]:
             # TODO(student): Sample a batch of config["batch_size"] transitions from the replay buffer
-            batch = ...
-            update_info = ...
+            batch = replay_buffer.sample(config["batch_size"])
+            update_info = agent.update(
+                ptu.from_numpy(batch["observations"]),
+                ptu.from_numpy(batch["actions"]),
+                ptu.from_numpy(batch["rewards"]),
+                ptu.from_numpy(batch["next_observations"]),
+                ptu.from_numpy(batch["dones"]),
+                step,
+            )
 
             # Logging
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
@@ -116,6 +123,25 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
             logger.log_scalar(np.mean(returns), "eval_return", step)
             logger.log_scalar(np.mean(ep_lens), "eval_ep_len", step)
+            
+            # Q-value printing during evaluation
+            try:
+                # Sample a batch from the replay buffer for Q-value analysis
+                eval_batch = replay_buffer.sample(config["batch_size"])
+                
+                # Use target_critic to get Q-values
+                q_values = ptu.to_numpy(agent.target_critic(
+                    ptu.from_numpy(eval_batch["observations"]), 
+                    ptu.from_numpy(eval_batch["actions"])
+                ))
+                
+                print(f"\nStep {step} Evaluation:")
+                print(f"Target Q-Values - Mean: {np.mean(q_values):.4f}, "
+                      f"Std: {np.std(q_values):.4f}, "
+                      f"Min: {np.min(q_values):.4f}, "
+                      f"Max: {np.max(q_values):.4f}")
+            except Exception as e:
+                print(f"Could not print Q-values: {e}")
 
             if len(returns) > 1:
                 logger.log_scalar(np.std(returns), "eval/return_std", step)
