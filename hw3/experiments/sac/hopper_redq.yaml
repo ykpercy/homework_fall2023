@@ -1,5 +1,5 @@
-num_critic_networks: 2
-target_critic_backup_type: mean
+num_critic_networks: 10
+target_critic_backup_type: redq
 exp_name: sac_hopper_clipq
 
 # Same for all Hopper experiments

@@ -45,6 +45,8 @@ def sac_config(
     temperature: float = 0.1,
     actor_fixed_std: Optional[float] = None,
     use_tanh: bool = True,
+    # Vectorized environment
+    num_envs: int = 8,
 ):
     def make_critic(observation_shape: Tuple[int, ...], action_dim: int) -> nn.Module:
         return StateActionCritic(
@@ -101,6 +103,11 @@ def sac_config(
                 )
             )
         )
+    
+    # Add vectorized environment creation function
+    def make_vector_env(num_parallel_envs=num_envs):
+        env_fns = [lambda: make_env() for _ in range(num_parallel_envs)]
+        return AsyncVectorEnv(env_fns)
 
     log_string = "{}_{}_{}_s{}_l{}_alr{}_clr{}_b{}_d{}".format(
         exp_name or "offpolicy_ac",
@@ -137,7 +144,7 @@ def sac_config(
             "discount": discount,
             "actor_gradient_type": actor_gradient_type,
             "num_actor_samples": num_actor_samples,
-            "num_critic_updates": num_critic_updates,
+            # "num_critic_updates": num_critic_updates,
             "num_critic_networks": num_critic_networks,
             "target_critic_backup_type": target_critic_backup_type,
             "use_entropy_bonus": use_entropy_bonus,
@@ -158,4 +165,6 @@ def sac_config(
         "ep_len": ep_len,
         "batch_size": batch_size,
         "make_env": make_env,
+        "make_vector_env": make_vector_env,
+        "num_envs": num_envs,
     }

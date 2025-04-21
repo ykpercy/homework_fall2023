@@ -72,6 +72,9 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
         # Step the environment and add the data to the replay buffer
         next_observation, reward, done, info = env.step(action)
+        # print(f"the reward: {reward}")
+        # print(f"the action: {action}")
+        # print(f"the next_observation: {next_observation}")
         replay_buffer.insert(
             observation=observation,
             action=action,
@@ -104,6 +107,12 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
             update_info["critic_lr"] = agent.critic_lr_scheduler.get_last_lr()[0]
 
+            # 每100步打印一次熵值（可以根据需要调整频率）
+            if step % 1000 == 0:
+                print(f"Step {step}, Entropy: {update_info['entropy']:.4f}")
+                print(f"Step {step}, Target Values: {update_info['target_values']:.4f}")
+
+
             if step % args.log_interval == 0:
                 for k, v in update_info.items():
                     logger.log_scalar(v, k, step)
@@ -123,25 +132,59 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
 
             logger.log_scalar(np.mean(returns), "eval_return", step)
             logger.log_scalar(np.mean(ep_lens), "eval_ep_len", step)
+
+            # 直接打印评估回报值及统计信息
+            print(f"\n=== EVALUATION AT STEP {step} ===")
+            print(f"Evaluation Return: {np.mean(returns):.4f}")
+            print(f"Return Std: {np.std(returns):.4f}")
+            print(f"Return Max: {np.max(returns):.4f}")
+            print(f"Return Min: {np.min(returns):.4f}")
             
-            # Q-value printing during evaluation
-            try:
-                # Sample a batch from the replay buffer for Q-value analysis
-                eval_batch = replay_buffer.sample(config["batch_size"])
+            # # Q-value printing during evaluation
+            # try:
+            #     # Sample a batch from the replay buffer for Q-value analysis
+            #     eval_batch = replay_buffer.sample(config["batch_size"])
                 
-                # Use target_critic to get Q-values
-                q_values = ptu.to_numpy(agent.target_critic(
-                    ptu.from_numpy(eval_batch["observations"]), 
-                    ptu.from_numpy(eval_batch["actions"])
-                ))
+            #     # Use target_critic to get Q-values
+            #     q_values = ptu.to_numpy(agent.target_critic(
+            #         ptu.from_numpy(eval_batch["observations"]), 
+            #         ptu.from_numpy(eval_batch["actions"])
+            #     ))
                 
-                print(f"\nStep {step} Evaluation:")
-                print(f"Target Q-Values - Mean: {np.mean(q_values):.4f}, "
-                      f"Std: {np.std(q_values):.4f}, "
-                      f"Min: {np.min(q_values):.4f}, "
-                      f"Max: {np.max(q_values):.4f}")
-            except Exception as e:
-                print(f"Could not print Q-values: {e}")
+            #     # # Compute and log actor's entropy
+            #     # with torch.no_grad():
+            #     #     # Get log probabilities from the actor
+            #     #     obs_tensor = ptu.from_numpy(eval_batch["observations"])
+            #     #     _, log_prob = agent.actor(obs_tensor)
+                    
+            #     #     # Compute entropy from log probabilities
+            #     #     entropy = -log_prob.mean().item()
+
+            #     # Compute and log actor's entropy
+            #     # with torch.no_grad():
+            #     #     # Get action distributions from the actor
+            #     #     obs_tensor = ptu.from_numpy(eval_batch["observations"])
+            #     #     # dist_params = agent.actor(obs_tensor)
+                    
+            #     #     # Sample actions and get log probabilities
+            #     #     # actions, log_probs = agent.actor.sample(dist_params)
+            #     #     loss, entropy = agent.actor_loss_reparametrize(obs_tensor)
+                    
+            #     #     # Compute entropy from log probabilities
+            #     #     # entropy = -log_probs.mean().item()
+                    
+            #     #     # Log entropy
+            #     #     logger.log_scalar(entropy, "actor_entropy", step)
+
+            #     # print(f"\nStep {step} Evaluation:")
+            #     print(f"Target Q-Values - Mean: {np.mean(q_values):.4f}, "
+            #           f"Std: {np.std(q_values):.4f}, "
+            #           f"Min: {np.min(q_values):.4f}, "
+            #           f"Max: {np.max(q_values):.4f}")
+            #     # print(f"Actor Entropy: {entropy:.4f}")
+            #     # print(f"Eval Return: {np.mean(returns):.4f}")
+            # except Exception as e:
+            #     print(f"Could not print Q-values: {e}")
 
             if len(returns) > 1:
                 logger.log_scalar(np.std(returns), "eval/return_std", step)

@@ -51,6 +51,7 @@ class ReplayBuffer:
             done = np.array(done)
         if isinstance(action, int):
             action = np.array(action, dtype=np.int64)
+            print(f"action: {action}")
 
         if self.observations is None:
             self.observations = np.empty(

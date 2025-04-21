@@ -109,6 +109,7 @@ class SoftActorCritic(nn.Module):
 
             assert action.shape == (1, self.action_dim), action.shape
             return ptu.to_numpy(action).squeeze(0)
+            
 
     def critic(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
@@ -160,22 +161,6 @@ class SoftActorCritic(nn.Module):
         elif self.target_critic_backup_type == "mean":
             mean_q = torch.mean(next_qs, dim=0)
             next_qs = mean_q.unsqueeze(0).expand(num_critic_networks, -1)
-        elif self.target_critic_backup_type == "redq":
-            # For each critic, randomly sample M (default=2) critics from the ensemble
-            # and use their minimum Q-value as the target
-            M = 2  # Number of critics to sample for each target
-            sampled_targets = []
-            
-            for _ in range(num_critic_networks):
-                # Randomly select M critics without replacement
-                indices = torch.randperm(num_critic_networks)[:M]
-                # Select the Q-values from these critics
-                selected_qs = next_qs[indices]
-                # Take the minimum of these Q-values
-                min_q, _ = torch.min(selected_qs, dim=0)
-                sampled_targets.append(min_q)
-            
-            next_qs = torch.stack(sampled_targets, dim=0)
         else:
             # Default, we don't need to do anything.
             pass
